@@ -64,6 +64,15 @@ class ResponsiveAnalogRead
     inline void setAnalogResolution(int resolution) { analogResolution = resolution; }
     // if your ADC is something other than 10bit (1024), set that here
 
+    byte getByteValue();
+    inline void setDebug(bool b) {_debug = b; }
+    inline void enableMap(bool b) { _map = b; }
+
+    void calibrate();
+    int multiMap(int val);
+
+    void setMap(int* in, int* out, uint8_t size);
+
   private:
     int pin;
     int analogResolution = 1024;
@@ -84,6 +93,16 @@ class ResponsiveAnalogRead
 
     int getResponsiveValue(int newValue);
     float snapCurve(float x);
+
+    int doMapping(int val);
+
+    int _max;
+    bool _map;
+    bool _useByte;
+    bool _debug;
+    int* _in;
+    int* _out;
+    uint8_t _mapSize;
 };
 
 #endif

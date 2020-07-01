@@ -33,14 +33,18 @@ void ResponsiveAnalogRead::begin(int pin, bool sleepEnable, float snapMultiplier
     this->pin = pin;
     this->sleepEnable = sleepEnable;
     setSnapMultiplier(snapMultiplier);
-    
-    
+
+    analogReadResolution(10);
+    _max=1023; //10 bits
+    //_max = 4095; //ESP has 12bits on ADC pins (see https://www.arduino.cc/reference/en/language/functions/zero-due-mkr-family/analogreadresolution/)
+
+    _useByte=true; // already map analogRead value to byte
 }
 
 
 void ResponsiveAnalogRead::update()
 {
-  rawValue = analogRead(pin);
+  rawValue = _useByte? doMapping(analogRead(pin)) : analogRead(pin);
   this->update(rawValue);
 }
 
@@ -50,6 +54,9 @@ void ResponsiveAnalogRead::update(int rawValueRead)
   prevResponsiveValue = responsiveValue;
   responsiveValue = getResponsiveValue(rawValue);
   responsiveValueHasChanged = responsiveValue != prevResponsiveValue;
+  if(_debug && responsiveValueHasChanged) {
+    Serial.print(F("Change: raw=")); Serial.print(rawValue); Serial.print(F(" responsiveValue=")); Serial.println(responsiveValue);
+  }
 }
 
 int ResponsiveAnalogRead::getResponsiveValue(int newValue)
@@ -137,4 +144,126 @@ void ResponsiveAnalogRead::setSnapMultiplier(float newMultiplier)
     newMultiplier = 0.0;
   }
   snapMultiplier = newMultiplier;
+}
+
+int ResponsiveAnalogRead::multiMap(int val)
+{
+  if(_debug) { Serial.printf(" val=%i",val); };
+  // take care the value is within range
+  // val = constrain(val, _in[0], _in[size-1]);
+  if (val <= _in[0]) return _out[0];
+  if (val >= _in[_mapSize-1]) {
+    /*if(_debug) {
+      Serial.printf(" for %i exit in=%i #%i to out=%i\n",val, _in[_mapSize-1], _mapSize-1, _out[_mapSize-1]);
+      Serial.print("in=");
+      for(int i=0;i<_mapSize;i++)
+        Serial.printf("%i, ",_in[i]);
+      Serial.println();
+        Serial.print("out=");
+      for(int i=0;i<_mapSize;i++)
+        Serial.printf("%i, ",_out[i]);
+      Serial.println();
+    }*/
+    return _out[_mapSize-1];
+  }
+  if(_debug) { Serial.print(" step2"); }
+
+  // search right interval
+  uint8_t pos = 1;  // _in[0] allready tested
+  while(val > _in[pos]) pos++;
+  if(_debug) { Serial.printf(" for %i found in=%i #%i to out=%i\n",val, _in[pos], pos, _out[pos]); }
+
+  // this will handle all exact "points" in the _in array
+  if (val == _in[pos]) return _out[pos];
+
+  // interpolate in the right segment for the rest
+  if(_debug) { Serial.print(" step"); }
+  return (val - _in[pos-1]) * (_out[pos] - _out[pos-1]) / (_in[pos] - _in[pos-1]) + _out[pos-1];
+}
+
+
+void ResponsiveAnalogRead::setMap(int* in, int* out, uint8_t size){
+  _in=in; _out=out; _mapSize=size;
+  _map=true;
+  if(_debug) {
+    Serial.print("in=");
+    for(int i=0;i<size;i++)
+      Serial.printf("%i, ",_in[i]);
+    Serial.println();
+    Serial.print("out=");
+    for(int i=0;i<size;i++)
+      Serial.printf("%i, ",_out[i]);
+    Serial.println();
+    Serial.printf("mapSize=%i\n",_mapSize);
+  }
+}
+
+
+int ResponsiveAnalogRead::doMapping(int val) {
+  if(_map) 
+    return multiMap(val);
+  else
+    return map(val, 0, _max, 0, 255);
+}
+
+byte ResponsiveAnalogRead::getByteValue() {
+  if(_useByte) return getValue(); // is alrady Byte
+  return doMapping(getValue());
+}
+
+void ResponsiveAnalogRead::calibrate() {
+
+  Serial.printf ("Starting potentiometer calibration on PIN %i:\n", pin);
+  Serial.println(F("=============================================="));
+  Serial.println();
+  Serial.print(F("Turn all the way to the minimum."));
+  delay(5000);
+  int min = analogRead(pin);
+  Serial.printf(" %i\n", min);
+  Serial.print(F("Turn all the way to the maximum."));
+  delay(5000);
+  int max = analogRead(pin);
+  Serial.printf(" %i\n", max);
+  Serial.println(F("Now turn slowly from minimum to maximum"));
+  delay(4000);
+
+  while(analogRead(pin)==0) delay(100);
+  
+  const int MAX=255;
+  int buf[255];
+  int pos=1;
+  buf[0]=min;
+  int _sensorRaw=0;
+  while(_sensorRaw<max) {
+    _sensorRaw = analogRead(pin);
+    Serial.printf(" %i", _sensorRaw);
+    buf[pos]=_sensorRaw;
+    if(pos>MAX) {
+      Serial.println(F("Movement too slow! Please start again."));
+      delay(2000);
+      return;
+    }
+    delay(500);
+    Serial.print(".");
+    pos++;
+  }
+  Serial.println();
+  Serial.printf("Good. Got %i data points.\n", pos+1);
+
+  Serial.print("int in[]={");
+  for(int i=0; i<pos; i++){
+    Serial.printf("%i,", buf[i]);
+  }
+  Serial.printf("%i};\n", max);
+
+  Serial.printf("int out[]={");
+  int add=255/(pos+1);
+  for(int i=0; i<pos; i++){
+    Serial.printf("%i,", i*add);
+  }
+  Serial.printf("%i};\n", 255);
+  Serial.printf("int size=%i;\n", pos+1);
+
+
+  delay(3000);
 }
