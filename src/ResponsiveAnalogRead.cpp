@@ -203,7 +203,7 @@ int ResponsiveAnalogRead::doMapping(int val) {
   if(_map) 
     return multiMap(val);
   else
-    return map(val, 0, _max, 0, 255);
+    return map(val, _min, _max, _toMin, _toMax);
 }
 
 byte ResponsiveAnalogRead::getByteValue() {

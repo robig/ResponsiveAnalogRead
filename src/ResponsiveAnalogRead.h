@@ -72,6 +72,7 @@ class ResponsiveAnalogRead
     int multiMap(int val);
 
     void setMap(int* in, int* out, uint8_t size);
+    inline void setMinMax(int min, int max, int toMin, int toMax) { _min=min; _max=max; _toMin=toMin; _toMax=toMax; analogResolution=toMax+1; }
 
   private:
     int pin;
@@ -96,7 +97,10 @@ class ResponsiveAnalogRead
 
     int doMapping(int val);
 
+    int _min;
     int _max;
+    int _toMin=0;
+    int _toMax=100;
     bool _map;
     bool _useByte;
     bool _debug;
